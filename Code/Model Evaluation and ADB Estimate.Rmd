@@ -1,0 +1,737 @@
+---
+title: "Path-Finding Model Evaluation and ADB Estimate"
+author: "Liza Wood"
+date: "22/06/2019"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document summarizes how we evaluated our path-finding models and the final statistical model for the counter/bikeshare relationship. Example code will be shown in the PDF. Repetitive code is suppressed in the PDF for brevity. Only the output is shown.
+
+# Ratio between the counters, based on counter data
+
+First, let's calculate the ratio between the four counters (City Park, Waterfront, Cawston and Ethel). This will be to what we "fit" our models of the relationship between bikeshare and counter data.
+
+The bikeshare data spans June 11 - Sept 9. Ethel counter was down after August 4. As a result, we will only look at June 11 - August 4 (8 full weeks). Let's aggregate all eight weeks and calculate the simple ratio of that aggregate.
+
+```{r}
+totals <- read.csv("Daily Counter 0611_0804.csv")
+totals <- colSums(totals[,-1])
+totals
+```
+
+Calculating the ratios from the above:
+```{r, echo=FALSE}
+AllCounters <- 45258 + 64832 + 23020 + 26250
+print(paste("All Counters:", AllCounters))
+TCawstonR <- round(45258/AllCounters*100, 2)
+print(paste("Total Cawston Ratio:", TCawstonR, "%"))
+TCityR <- round(64832/AllCounters*100, 2)
+print(paste("Total City Park Ratio:", TCityR, "%"))
+TEthelR <- round(23020/AllCounters*100, 2)
+print(paste("Total Ethel Ratio:", TEthelR,"%"))
+TWaterfrontR <- round(26250/AllCounters*100, 2)
+print(paste("Total Waterfront Ratio", TWaterfrontR,"%"))
+```
+
+# Evaluating Path-Finding Models
+
+## Model 1: Shortest Path
+
+Import CSV of daily bikeshare counts with counter data:
+```{r, echo=FALSE}
+dailysp <- read.csv("~/UBC/Capstone/data-599-capstone-project-bike-share/SourceData/bikeshre_vs_city_counters_daily_sp.csv")
+head(dailysp)
+```
+
+### Linear Regression Between Bikeshare vs. Counter at Each Counter Location
+
+Let's plot the *daily* bikeshare (x) vs counter (y) data for Waterfront. 
+```{r}
+plot(dailysp$Waterfront.Walkway,dailysp$Waterfront.Walkway.Cyclists, xlab="Daily Bikeshare Counts", ylab="Daily Counter Counts", main="Bikeshare vs. Counter at Waterfront")
+```
+
+While it doesn't look there is a linear relationship, it is the simplest, most intuitive relationship IF the traffic is similar. Let's do a linear regression and look at the stats.
+```{r}
+lrdailyspw <- lm(Waterfront.Walkway.Cyclists ~ Waterfront.Walkway, data=dailysp)
+summary(lrdailyspw)
+```
+
+There are two things to look for: the p-value and the R-squared value. R-squared is a statistical measure of how close the data are to the fitted regression line. The smaller the value, the less we are explaining the variation in the data. The higher the number, the better. In this case, we are only explaining 12% of the variation. This is not good. The p-value gives an indication on whether the coefficient (the multiplier for the bikeshare data) is statistically signficant. A p-value of less than 0.05 means that the multiplier is statistically significant. Here we have a statistically significant multiplier on a poorly fit model. That's a mixed message.
+
+Let's add the line to the plot:
+```{r}
+plot(dailysp$Waterfront.Walkway,dailysp$Waterfront.Walkway.Cyclists, xlab="Daily Bikeshare Counts", ylab="Daily Counter Counts", main="Bikeshare vs. Counter at Waterfront: Shortest Path")
+abline(lrdailyspw)
+```
+
+Let's look at City Park:
+```{r, echo=FALSE}
+lrdailyspcp <- lm(City.Park.Multi.Cyclists ~ City.Park.Multi, data=dailysp)
+summary(lrdailyspcp)
+plot(dailysp$City.Park.Multi,dailysp$City.Park.Multi.Cyclists, xlab="Daily Bikeshare Counts", ylab="Daily Counter Counts", main="Bikeshare vs. Counter at City Park: Shortest Path")
+abline(lrdailyspcp)
+```
+
+Similar situation as Waterfront. A statistically significant multiplier, which is different than Waterfront, on a poorly fit model.
+
+Let's look at Cawston. We need to add the road and the bike path counts together first.
+```{r, echo=FALSE}
+lrdailyspc <- lm(Cawston.St.corridor.Cyclists ~ Cawston_modified, data=dailysp)
+summary(lrdailyspc)
+plot(dailysp$Cawston_modified,dailysp$Cawston.St.corridor.Cyclists, xlab="Daily Bikeshare Counts", ylab="Daily Counter Counts", main="Bikeshare vs. Counter at Cawston: Shortest Path")
+abline(lrdailyspc)
+```
+
+Same situation as the other two locations.
+
+Let's look at Ethel, but only for the 8 weeks before the counter was taken down.
+```{r}
+# Make a copy of the dataframe, since we need to drop rows
+EthelDaily <- dailysp
+EthelDaily$date = as.Date(EthelDaily$date, format="%Y-%m-%d")
+EthelDaily <- EthelDaily[EthelDaily[["date"]] <= "2018-08-04", ]
+summary(EthelDaily)
+```
+
+```{r, echo=FALSE}
+lrdailyspe <- lm(Ethel.St.ATC.Cyclists ~ Ethel.St..ATC, data=EthelDaily)
+summary(lrdailyspe)
+plot(EthelDaily$Ethel.St..ATC,EthelDaily$Ethel.St.ATC.Cyclists, xlab="Daily Bikeshare Counts", ylab="Daily Counter Counts", main="Bikeshare vs. Counter at Ethel:Shortest Path")
+abline(lrdailyspe)
+```
+
+In addition to a very low R-squared and a high p-value, the multiplier is negative! This is definitely not a good model for the relationship between bikeshare and counter data at this location. Between that and the results from the other counters, daily bikeshare counts is not the way to go for linear regression. We will *not* repeat this exercise with the other models.
+
+Let's do the same with *weekly* aggregations and see if we get better results. 
+
+Waterfront:
+```{r, echo=FALSE}
+weeklysp <- read.csv("~/UBC/Capstone/data-599-capstone-project-bike-share/SourceData/bikeshre_vs_city_counters_Weekly_sp.csv")
+lrweeklyspw <- lm(Waterfront.Walkway.Cyclists ~ Waterfront.Walkway, data=weeklysp)
+summary(lrweeklyspw)
+plot(weeklysp$Waterfront.Walkway,weeklysp$Waterfront.Walkway.Cyclists, xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at Waterfront: Shortest Path")
+abline(lrweeklyspw)
+```
+
+Higher R-squared value than when we used the daily data, so we have a better fit. The statistical signficance of the coefficient (the multiplier for the bikeshare data) went down, though. It's still 90%, though. 
+
+City Park:
+```{r, echo=FALSE}
+lrweeklyspcp <- lm(City.Park.Multi.Cyclists ~ City.Park.Multi, data=weeklysp)
+summary(lrweeklyspcp)
+plot(weeklysp$City.Park.Multi,weeklysp$City.Park.Multi.Cyclists, xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at City Park: Shortest Path")
+abline(lrweeklyspcp)
+```
+
+Similar result as with Waterfront. Again, the multiplier is very different. If the traffic pattern for bikeshare and the traffic captured by the counters were the same, the multipliers should be close.
+
+Cawston:
+```{r, echo=FALSE}
+lrweeklyspc <- lm(Cawston.St.corridor.Cyclists ~ Cawston_modified, data=weeklysp)
+summary(lrweeklyspc)
+plot(weeklysp$Cawston_modified,weeklysp$Cawston.St.corridor.Cyclists, xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at Cawston: Shortest Path")
+abline(lrweeklyspc)
+```
+
+Cawston has a low R-squared and a high p-value. This is not a good model for the relationship between the bikeshare and counter data at this location. 
+
+Ethel:
+```{r, echo=FALSE}
+# Make a copy of the dataframe, since we need to drop rows
+EthelWeekly <- weeklysp
+EthelWeekly$date = as.Date(EthelWeekly$date, format="%Y-%m-%d")
+EthelWeekly <- EthelWeekly[EthelWeekly[["date"]] <= "2018-08-05", ]
+
+lrweeklyspe <- lm(Ethel.St.ATC.Cyclists ~ Ethel.St..ATC, data=EthelWeekly)
+summary(lrweeklyspe)
+plot(EthelWeekly$Ethel.St..ATC,EthelWeekly$Ethel.St.ATC.Cyclists,xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at Ethel: Shortest Path")
+abline(lrweeklyspe)
+```
+
+Better than the daily, but R-squared is still low and p-value is still high. This is not a good model for the relationship between bikeshare and counter data. At least the multiplier is positive at this location when we use the weekly data. 
+
+### Split of Counts Between Counter Locations.
+
+Let's check the split in the bikeshare data based on the total aggregates and see how it compares with the split with the counter data at each location. We'll start with the EthelWeekly dataframe since it just covers the weeks the Ethel counter was operating.
+
+Calculate Bikeshare ratios:
+```{r}
+EthelWeekly$TotalBikeShr <- EthelWeekly$Cawston_modified + EthelWeekly$City.Park.Multi + EthelWeekly$Ethel.St..ATC + EthelWeekly$Waterfront.Walkway
+AllBikeShr <- sum(EthelWeekly$TotalBikeShr)
+print(paste("All Bikeshare:", AllBikeShr))
+PerCawstonBikeShr <- sum(EthelWeekly$Cawston_modified)/AllBikeShr
+print(paste("Cawston Bikeshare Ratio:", PerCawstonBikeShr))
+PerCityBikeShr <- sum(EthelWeekly$City.Park.Multi)/AllBikeShr
+print(paste("City Park Bikeshare Ratio:", PerCityBikeShr))
+PerEthelBikeShr <- sum(EthelWeekly$Ethel.St..ATC)/AllBikeShr
+print(paste("Ethel Bikeshare Ratio:", PerEthelBikeShr))
+PerWaterfrontBikeShr <- sum(EthelWeekly$Waterfront.Walkway)/AllBikeShr
+print(paste("Waterfront Bikeshare Ratio", PerWaterfrontBikeShr))
+```
+
+Comparing the Bikeshare Ratios with the Counter Ratios, Cawston and City Park are pretty close. Bikeshare ratio for Ethel is too low. Waterfront is too high.
+
+At this point, we thought we should check the traffic pattern at each counter for the bikeshare data and compare it with the traffic pattern from the counter data. This was done in CoLab since it required dealing with all the path segments. This is done much faster with the cloud computing in CoLab. 
+
+From that work, we found that the bikeshare traffic pattern was closest to the traffic pattern from the counter data at City Park. As a result, we won't get close multipliers by doing a linear regression at each counter. We'll test all the other path-finding models with linear regression at City Park only. We'll continue to check the ratios at all the counters.
+
+## Model 2: Weighted Shortest Length 
+
+Based on the results from Model 1, we'll only do linear regression on City Park only.
+
+### Linear Regression at City Park
+
+City Park:
+```{r, echo=FALSE}
+weeklywsp <- read.csv("~/UBC/Capstone/data-599-capstone-project-bike-share/SourceData/bikeshare_vs_city_counters_Weekly_wlp.csv")
+lrweeklywspcp <- lm(City.Park.Multi.Cyclists ~ City.Park.Multi, data=weeklywsp)
+summary(lrweeklywspcp)
+plot(weeklywsp$City.Park.Multi,weeklywsp$City.Park.Multi.Cyclists, xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at City Park: Weighted Shortest Path")
+abline(lrweeklywspcp)
+```
+
+Lower R-squared and higher p-value than City Park for Model 1 (Shortest Path). This model for the relationship between bikeshare and counter data is not as good as Model 1.
+
+### Split of Counts Between Counter Locations
+
+Subset to June 11 - August 5 when all four counters were running. 
+```{r, echo=FALSE}
+# Make a copy of the dataframe, since we need to drop rows
+EthelWeeklywsp <- weeklywsp
+EthelWeeklywsp$date = as.Date(EthelWeeklywsp$date, format="%Y-%m-%d")
+EthelWeeklywsp <- EthelWeeklywsp[EthelWeeklywsp[["date"]] <= "2018-08-05", ]
+EthelWeeklywsp
+```
+
+Looking at the ratio of the total aggregate:
+
+Bikeshare ratios:
+```{r, echo=FALSE}
+EthelWeeklywsp$TotalBikeShr <- EthelWeeklywsp$Cawston_modified + EthelWeeklywsp$City.Park.Multi + EthelWeeklywsp$Ethel.St..ATC + EthelWeeklywsp$Waterfront.Walkway
+AllBikeShrwsp <- sum(EthelWeeklywsp$TotalBikeShr)
+print(paste("All Bikeshare:", AllBikeShrwsp))
+PerCawstonBikeShrwsp <- sum(EthelWeeklywsp$Cawston_modified)/AllBikeShrwsp
+print(paste("Cawston Bikeshare Ratio:", PerCawstonBikeShrwsp))
+PerCityBikeShrwsp <- sum(EthelWeeklywsp$City.Park.Multi)/AllBikeShrwsp
+print(paste("City Park Bikeshare Ratio:", PerCityBikeShrwsp))
+PerEthelBikeShrwsp <- sum(EthelWeeklywsp$Ethel.St..ATC)/AllBikeShrwsp
+print(paste("Ethel Bikeshare Ratio:", PerEthelBikeShrwsp))
+PerWaterfrontBikeShrwsp <- sum(EthelWeeklywsp$Waterfront.Walkway)/AllBikeShrwsp
+print(paste("Waterfront Bikeshare Ratio", PerWaterfrontBikeShrwsp))
+```
+
+Comparing the mean bikeshare ratios with the mean counter ratios, Cawston and Ethel are much lower while City Park and Waterfront are much higher than Model 1. Overall, Model 2 is not as good as Model 1.
+
+## Model 3: Closeness Centrality - Downtown Graph
+
+For closeness centrality, the centrality was calculated for downtown only, since most of the bikeshare data is there.
+
+### Linear Regression at City Park
+
+```{r, echo=FALSE}
+weeklydcc <- read.csv("~/UBC/Capstone/data-599-capstone-project-bike-share/SourceData/bikeshare_vs_city_counters_Weekly_closeness.csv")
+lrweeklydcccp <- lm(City.Park.Multi.Cyclists ~ City.Park.Multi, data=weeklydcc)
+summary(lrweeklydcccp)
+plot(weeklydcc$City.Park.Multi,weeklydcc$City.Park.Multi.Cyclists, xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at City Park: Centrality")
+abline(lrweeklydcccp)
+```
+
+Lower R-squared and higher p-value than Model 1 and 2, so not quite as good as those.
+
+### Split of Counts Between Counter Locations.
+
+Subset the data to just June 11 - August 5.
+```{r, echo=FALSE}
+# Make a copy of the dataframe, since we need to drop rows
+EthelWeeklydcc <- weeklydcc
+EthelWeeklydcc$date = as.Date(EthelWeeklydcc$date, format="%Y-%m-%d")
+EthelWeeklydcc <- EthelWeeklydcc[EthelWeeklydcc[["date"]] <= "2018-08-05", ]
+
+#Calculate Bikeshare ratios:
+EthelWeeklydcc$TotalBikeShr <- EthelWeeklydcc$Cawston_modified + EthelWeeklydcc$City.Park.Multi + EthelWeeklydcc$Ethel.St..ATC + EthelWeeklydcc$Waterfront.Walkway
+AllBikeShrdcc <- sum(EthelWeeklydcc$TotalBikeShr)
+print(paste("All Bikeshare:", AllBikeShrdcc))
+PerCawstonBikeShrdcc <- sum(EthelWeeklydcc$Cawston_modified)/AllBikeShrdcc
+print(paste("Cawston Bikeshare Ratio:", PerCawstonBikeShrdcc))
+PerCityBikeShrdcc <- sum(EthelWeeklydcc$City.Park.Multi)/AllBikeShrdcc
+print(paste("City Park Bikeshare Ratio:", PerCityBikeShrdcc))
+PerEthelBikeShrdcc <- sum(EthelWeeklydcc$Ethel.St..ATC)/AllBikeShrdcc
+print(paste("Ethel Bikeshare Ratio:", PerEthelBikeShrdcc))
+PerWaterfrontBikeShrdcc <- sum(EthelWeeklydcc$Waterfront.Walkway)/AllBikeShrdcc
+print(paste("Waterfront Bikeshare Ratio", PerWaterfrontBikeShrdcc))
+```
+
+All the locations are off.
+
+
+## Model 4: Path Preference (not based on length)
+
+For this model, we're assigning a numeric weight depending on the street/path type. This is independent of the length of the path. It's a numerical weight based on cyclist preferences for street/path type. The weights are based on a research article by UBC Vancouver on cyclist preferences in 2010.
+
+### Linear Regression at City Park
+
+City Park:
+```{r, echo=FALSE}
+weeklypp <- read.csv("~/UBC/Capstone/data-599-capstone-project-bike-share/SourceData/bikeshare_vs_city_counters_Weekly_pp.csv")
+lrweeklyppcp <- lm(City.Park.Multi.Cyclists ~ City.Park.Multi, data=weeklypp)
+summary(lrweeklyppcp)
+plot(weeklypp$City.Park.Multi,weeklypp$City.Park.Multi.Cyclists, xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at City Park: Path Preference")
+abline(lrweeklyppcp)
+```
+
+The R-squared value is lower and the p-value is higher than Model 2. This model of the relationship between bikeshare and counter data is the worst so far. This path-finding model could be tuned further to get better results, if desired.
+
+### Split of Counts Between Counter Locations
+
+```{r, echo=FALSE}
+# Make a copy of the dataframe, since we need to drop rows
+EthelWeeklypp <- weeklypp
+EthelWeeklypp$date = as.Date(EthelWeeklypp$date, format="%Y-%m-%d")
+EthelWeeklypp <- EthelWeeklypp[EthelWeeklypp[["date"]] <= "2018-08-05", ]
+
+#Calculate Bikeshare ratios:
+EthelWeeklypp$TotalBikeShr <- EthelWeeklypp$Cawston_modified + EthelWeeklypp$City.Park.Multi + EthelWeeklypp$Ethel.St..ATC + EthelWeeklypp$Waterfront.Walkway
+AllBikeShrpp <- sum(EthelWeeklypp$TotalBikeShr)
+print(paste("All Bikeshare:", AllBikeShrpp))
+PerCawstonBikeShrpp <- sum(EthelWeeklypp$Cawston_modified)/AllBikeShrpp
+print(paste("Cawston Bikeshare Ratio:", PerCawstonBikeShrpp))
+PerCityBikeShrpp <- sum(EthelWeeklypp$City.Park.Multi)/AllBikeShrpp
+print(paste("City Park Bikeshare Ratio:", PerCityBikeShrpp))
+PerEthelBikeShrpp <- sum(EthelWeeklypp$Ethel.St..ATC)/AllBikeShrpp
+print(paste("Ethel Bikeshare Ratio:", PerEthelBikeShrpp))
+PerWaterfrontBikeShrpp <- sum(EthelWeeklypp$Waterfront.Walkway)/AllBikeShrpp
+print(paste("Waterfront Bikeshare Ratio", PerWaterfrontBikeShrpp))
+```
+
+Other than City Park, the ratio of the bikeshare counts are not close to the split for the counter data. Even the ratio for City Park is higher than the other three models. City Park and Waterfront bikeshare splits are too high. Cawston and Ethel are too low.
+
+## Model 5: Simple Path Preference Weighting in Favour of Cycleways
+
+To simplify the path preference model, we created a graph just creating weights to favour separated cycleways. All other streets and paths are equally weighted with a value of 1. Separated cycleways were weighted as 0.5 (i.e. cyclists are twice as likely to take these paths).
+
+### Linear Regression at City Park
+
+```{r, echo=FALSE}
+weeklyspp <- read.csv("~/UBC/Capstone/data-599-capstone-project-bike-share/SourceData/bikeshare_vs_city_counters_Weekly_spp.csv")
+lrweeklysppcp <- lm(City.Park.Multi.Cyclists ~ City.Park.Multi, data=weeklyspp)
+summary(lrweeklysppcp)
+plot(weeklyspp$City.Park.Multi,weeklyspp$City.Park.Multi.Cyclists, xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at City Park: Simplified Path Preference") 
+abline(lrweeklysppcp)
+```
+
+The R-squared value is higher and p-value is lower than Model 4. This is a better model of the relationship of bikeshare data to counter data than Model 4. Not quite as good as Model 2. Length may be a factor.
+
+### Split of Counts Between Counter Locations
+
+```{r, echo=FALSE}
+# Make a copy of the dataframe, since we need to drop rows
+EthelWeeklyspp <- weeklyspp
+EthelWeeklyspp$date = as.Date(EthelWeeklyspp$date, format="%Y-%m-%d")
+EthelWeeklyspp <- EthelWeeklyspp[EthelWeeklyspp[["date"]] <= "2018-08-05", ]
+
+#Calculate Bikeshare ratios:
+EthelWeeklyspp$TotalBikeShr <- EthelWeeklyspp$Cawston_modified + EthelWeeklyspp$City.Park.Multi + EthelWeeklyspp$Ethel.St..ATC + EthelWeeklyspp$Waterfront.Walkway
+AllBikeShrspp <- sum(EthelWeeklyspp$TotalBikeShr)
+print(paste("All Bikeshare:", AllBikeShrspp))
+PerCawstonBikeShrspp <- sum(EthelWeeklyspp$Cawston_modified)/AllBikeShrspp
+print(paste("Cawston Bikeshare Ratio:", PerCawstonBikeShrspp))
+PerCityBikeShrspp <- sum(EthelWeeklyspp$City.Park.Multi)/AllBikeShrspp
+print(paste("City Park Bikeshare Ratio:", PerCityBikeShrspp))
+PerEthelBikeShrspp <- sum(EthelWeeklyspp$Ethel.St..ATC)/AllBikeShrspp
+print(paste("Ethel Bikeshare Ratio:", PerEthelBikeShrspp))
+PerWaterfrontBikeShrspp <- sum(EthelWeeklyspp$Waterfront.Walkway)/AllBikeShrspp
+print(paste("Waterfront Bikeshare Ratio", PerWaterfrontBikeShrspp))
+```
+
+Now City Park is too high. Ethel and Waterfront are better, but Cawston is way too low.
+
+## Model 6: Weighted Corners
+
+After testing all of the above models and confirming that the bike traffic pattern is not the same as the traffic captured by the counters, we wondered: could we intentionally weight the graph so the bike split is the same as the counter split? If we do that, will the traffic patterns be closer, resulting in a more consistent model of the relationship between bikeshare and counter data?
+
+The path-finding model tested below had Ethel, Cawston and the path along the lake specifically weighted to get as close as possible to the same split as the counter data. All other paths were equal and weighted with a value of 1 (neutral).
+
+### Linear Regressions
+
+For this model, we'll go back to testing the relationship of the data at all four locations.
+
+Waterfront:
+```{r, echo=FALSE}
+weeklycor <- read.csv("~/UBC/Capstone/data-599-capstone-project-bike-share/SourceData/bikeshare_vs_city_counters_Weekly_cwp.csv")
+lrweeklycorw <- lm(Waterfront.Walkway.Cyclists ~ Waterfront.Walkway, data=weeklycor)
+summary(lrweeklycorw)
+plot(weeklycor$Waterfront.Walkway,weeklycor$Waterfront.Walkway.Cyclists, xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at Waterfront: Weighted Corners")
+abline(lrweeklycorw)
+```
+
+One of the highest R-squared values and p-value is less than 0.05. This looks promising.
+
+City Park:
+```{r, echo=FALSE}
+lrweeklycorcp <- lm(City.Park.Multi.Cyclists ~ City.Park.Multi, data=weeklycor)
+summary(lrweeklycorcp)
+plot(weeklycor$City.Park.Multi,weeklycor$City.Park.Multi.Cyclists, xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at City Park: Corner Weighted")
+abline(lrweeklycorcp)
+```
+
+For City Park, this is one of the worst models. However, the multiplier is close to that of Waterfront, which had one of the best results. 
+
+Cawston:
+```{r, echo=FALSE}
+#weeklycor$Cawston_modified <- weeklycor$Cawston.St..Bike.Path + weeklycor$Cawston.St..Road
+lrweeklycorc <- lm(Cawston.St.corridor.Cyclists ~ Cawston_modified, data=weeklycor)
+summary(lrweeklycorc)
+plot(weeklycor$Cawston_modified, weeklycor$Cawston.St.corridor.Cyclists, xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at Cawston: Weighted Corners")
+abline(lrweeklycorc)
+```
+
+Based on R-squared and p-value, not a great model. However, the value of the multiplier is close to Waterfront and City Park.
+
+Ethel:
+```{r, echo=FALSE}
+# Make a copy of the dataframe, since we need to drop rows
+EthelWeeklycor <- weeklycor
+EthelWeeklycor$date = as.Date(EthelWeeklycor$date, format="%Y-%m-%d")
+EthelWeeklycor <- EthelWeeklycor[EthelWeeklycor[["date"]] <= "2018-08-05", ]
+
+# Calculate the relationship
+lrweeklycore <- lm(Ethel.St.ATC.Cyclists ~ Ethel.St..ATC, data=EthelWeeklycor)
+summary(lrweeklycore)
+plot(EthelWeeklycor$Ethel.St..ATC,EthelWeeklycor$Ethel.St.ATC.Cyclists, xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at Ethel: Corner Weighted")
+abline(lrweeklycore)
+```
+
+This is a really bad model of the relationship between bikeshare and counter data. Even the multiplier isn't close to the other three locations. 
+
+### Split of Counts Between Counter Locations
+
+```{r, echo=FALSE}
+EthelWeeklycor$TotalBikeShr <- EthelWeeklycor$Cawston_modified + EthelWeeklycor$City.Park.Multi + EthelWeeklycor$Ethel.St..ATC + EthelWeeklycor$Waterfront.Walkway
+AllBikeShrcor <- sum(EthelWeeklycor$TotalBikeShr)
+print(paste("All Bikeshare:", AllBikeShrcor))
+PerCawstonBikeShrcor <- sum(EthelWeeklycor$Cawston_modified)/AllBikeShrcor
+print(paste("Cawston Bikeshare Ratio:", PerCawstonBikeShrcor))
+PerCityBikeShrcor <- sum(EthelWeeklycor$City.Park.Multi)/AllBikeShrcor
+print(paste("City Park Bikeshare Ratio:", PerCityBikeShrcor))
+PerEthelBikeShrcor <- sum(EthelWeeklycor$Ethel.St..ATC)/AllBikeShrcor
+print(paste("Ethel Bikeshare Ratio:", PerEthelBikeShrcor))
+PerWaterfrontBikeShrcor <- sum(EthelWeeklycor$Waterfront.Walkway)/AllBikeShrcor
+print(paste("Waterfront Bikeshare Ratio", PerWaterfrontBikeShrcor))
+```
+
+Pretty close. Could tweak the model further to get closer, but the weights are already unrealistic. We're looking for a single multiplier to scale up the bikeshare data and this model provides it for three of the four counters. Ethel has too few trips over too few weeks, so we would use City Park, Cawston and Waterfront.
+
+## Model 7: Unbiased
+
+For this model all road segments are considered equal and set to 1.
+
+### Linear Regression at City Park
+
+```{r, echo=FALSE}
+weeklyub <- read.csv("~/UBC/Capstone/data-599-capstone-project-bike-share/SourceData/bikeshare_vs_city_counters_Weekly_unbiased.csv")
+lrweeklyubcp <- lm(City.Park.Multi.Cyclists ~ City.Park.Multi, data=weeklyub)
+summary(lrweeklyubcp)
+plot(weeklyub$City.Park.Multi,weeklyub$City.Park.Multi.Cyclists, xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at City Park: Unbiased")
+abline(lrweeklyubcp)
+```
+
+For City Park, this is one of the lowest R-squared values and one of the higher p-values. Not one of our best models.
+
+### Split of Counts Between Counter Locations
+
+```{r, echo=FALSE}
+# Make a copy of the dataframe, since we need to drop rows
+EthelWeeklyub <- weeklyub
+EthelWeeklyub$date = as.Date(EthelWeeklyub$date, format="%Y-%m-%d")
+EthelWeeklyub <- EthelWeeklyub[EthelWeeklyub[["date"]] <= "2018-08-05", ]
+
+#Calculate Bikeshare ratios:
+EthelWeeklyub$TotalBikeShr <- EthelWeeklyub$Cawston_modified + EthelWeeklyub$City.Park.Multi + EthelWeeklyub$Ethel.St..ATC + EthelWeeklyub$Waterfront.Walkway
+AllBikeShrub <- sum(EthelWeeklyub$TotalBikeShr)
+print(paste("All Bikeshare:", AllBikeShrub))
+PerCawstonBikeShrub <- sum(EthelWeeklyub$Cawston_modified)/AllBikeShrub
+print(paste("Cawston Bikeshare Ratio:", PerCawstonBikeShrub))
+PerCityBikeShrub <- sum(EthelWeeklyub$City.Park.Multi)/AllBikeShrub
+print(paste("City Park Bikeshare Ratio:", PerCityBikeShrub))
+PerEthelBikeShrub <- sum(EthelWeeklyub$Ethel.St..ATC)/AllBikeShrub
+print(paste("Ethel Bikeshare Ratio:", PerEthelBikeShrub))
+PerWaterfrontBikeShrub <- sum(EthelWeeklyub$Waterfront.Walkway)/AllBikeShrub
+print(paste("Waterfront Bikeshare Ratio", PerWaterfrontBikeShrub))
+```
+
+
+City Park and Waterfront are too high. Cawston is too low. Ethel is better than some other models. With respect to modelling the relationship between bikeshare and counter data, the unbiased path-finding model is not one of our better relationship models.
+
+## Model 8: Corner-Weighted Length Path
+
+Seeing how Weighted Shortest Path did with respect to Simplified Preferred Path, we thought we would try the same idea to Corner-Weighted Length Path.
+
+### Linear Regression at City Park
+
+```{r, echo=FALSE}
+weeklycwlp <- read.csv("~/UBC/Capstone/data-599-capstone-project-bike-share/SourceData/bikeshare_vs_city_counters_Weekly_cwlp.csv")
+lrweeklycwlpcp <- lm(City.Park.Multi.Cyclists ~ City.Park.Multi, data=weeklycwlp)
+summary(lrweeklycwlpcp)
+plot(weeklycwlp$City.Park.Multi,weeklycwlp$City.Park.Multi.Cyclists, xlab="Weekly Bikeshare Counts", ylab="Weekly Counter Counts", main="Bikeshare vs. Counter at City Park: Unbiased")
+abline(lrweeklycwlpcp)
+```
+
+For City Park, this is one of the lower R-squared values and one of the higher p-values. Not one of our best models.
+
+### Split of Counts Between Counter Locations
+
+```{r, echo=FALSE}
+# Make a copy of the dataframe, since we need to drop rows
+EthelWeeklycwlp <- weeklycwlp
+EthelWeeklycwlp$date = as.Date(EthelWeeklycwlp$date, format="%Y-%m-%d")
+EthelWeeklycwlp <- EthelWeeklycwlp[EthelWeeklycwlp[["date"]] <= "2018-08-05", ]
+
+#Calculate Bikeshare ratios:
+EthelWeeklycwlp$TotalBikeShr <- EthelWeeklycwlp$Cawston_modified + EthelWeeklycwlp$City.Park.Multi + EthelWeeklycwlp$Ethel.St..ATC + EthelWeeklycwlp$Waterfront.Walkway
+AllBikeShrcwlp <- sum(EthelWeeklycwlp$TotalBikeShr)
+print(paste("All Bikeshare:", AllBikeShrcwlp))
+PerCawstonBikeShrcwlp <- sum(EthelWeeklycwlp$Cawston_modified)/AllBikeShrcwlp
+print(paste("Cawston Bikeshare Ratio:", PerCawstonBikeShrcwlp))
+PerCityBikeShrcwlp <- sum(EthelWeeklycwlp$City.Park.Multi)/AllBikeShrcwlp
+print(paste("City Park Bikeshare Ratio:", PerCityBikeShrcwlp))
+PerEthelBikeShrcwlp <- sum(EthelWeeklycwlp$Ethel.St..ATC)/AllBikeShrcwlp
+print(paste("Ethel Bikeshare Ratio:", PerEthelBikeShrcwlp))
+PerWaterfrontBikeShrcwlp <- sum(EthelWeeklycwlp$Waterfront.Walkway)/AllBikeShrcwlp
+print(paste("Waterfront Bikeshare Ratio", PerWaterfrontBikeShrcwlp))
+```
+
+
+Interesting to see how the split shifts when we factor in length. Cawston and City Park are pretty good. Waterfront is too high and Ethel is too low.
+
+From linear regression, the ranking of the models is:
+1. Shortest Length
+2. Centrality
+3. Corner-Weighted Length
+
+From the split of counts between counter locations, the ranking of the models is:
+1. Corner-Weighted
+2. Shortest Length
+3. Weighted Length
+
+# What If the Relationship Between Bikeshare and Counter Data Isn't Simply Linear?
+
+Linear regression assumes that the relationship between y and x are linear and that the distribution of the residuals (** define residuals **) is normal. Since the values for our counts are always positive, we should consider a distribution that is non-negative (normal distribution allows for negative values).
+
+The Generalized Linear Model allows x to be non-normal. It is an extension of the linear regression we've been using.
+
+
+## GLM: Shortest Path
+
+Like we did with linear regression, we'll look at both the weekly and daily counts for shortest path at City Park to be consistent with what we did with linear regression. We will also test Poisson, Gamma and Normal (Gaussian) distributions for the residuals. For these models, we look at residual deviance explained by model and AIC. Residual deviance should be between zero and one. AIC provides a means of comparing models. While the number itself is not meaningful, the smaller the number the better the model, compared to the other models.
+
+CityPark:
+```{r}
+library(MPV)
+
+glmweeklysp <- read.csv("~/UBC/Capstone/data-599-capstone-project-bike-share/SourceData/bikeshre_vs_city_counters_Weekly_sp.csv")
+
+y <- glmweeklysp$City.Park.Multi.Cyclists
+x <- glmweeklysp$City.Park.Multi
+
+y.glmp <- glm(y ~ x, family = poisson(link="log"))
+y.glmg <- glm(y ~ x, family = Gamma(link="inverse"))
+y.glmn <- glm(y ~ x, family = gaussian(link="identity"))
+```
+
+```{r, echo=FALSE}
+print("Residual Deviance Explained by Model:")
+paste("Poisson family with default link function:", summary(y.glmp)$deviance, "df:",y.glmp$df.residual)
+paste("Gamma family with default link function:", summary(y.glmg)$deviance, "df:",y.glmg$df.residual)
+paste("Normal family with default link function:", summary(y.glmn)$deviance, "df:",y.glmn$df.residual)
+
+print("AIC by Model:")
+paste("Poisson family with default link function:", summary(y.glmp)$aic)
+paste("Gamma family with default link function:", summary(y.glmg)$aic)
+paste("Normal family with default link function (same as lm):", summary(y.glmn)$aic)
+```
+
+Looks like Gamma family is performing the best. It has the smallest residual deviance and almost the smallest AIC. Let's plot the relationship:
+
+```{r}
+plot(x,y)
+yp <- predict(y.glmg, type="response")
+lines(x,yp, col="2")
+```
+
+We have a slightly curved line. Other than that, it's not substantially different than lm().
+
+Does this model do better with the daily data?
+
+```{r, echo=FALSE}
+glmdailysp <- read.csv("~/UBC/Capstone/data-599-capstone-project-bike-share/SourceData/bikeshre_vs_city_counters_daily_sp.csv")
+
+y1 <- glmdailysp$City.Park.Multi.Cyclists
+x1 <- glmdailysp$City.Park.Multi
+
+y1.glmp <- glm(y1 ~ x1, family = poisson(link="log"))
+y1.glmg <- glm(y1 ~ x1, family = Gamma(link="inverse"))
+y1.glmn <- glm(y1 ~ x1, family = gaussian(link="identity"))
+```
+
+```{r, echo=FALSE}
+print("Residual Deviance Explained by Model:")
+paste("Poisson family with default link function:", summary(y1.glmp)$deviance, "df:",y1.glmp$df.residual)
+paste("Gamma family with default link function:", summary(y1.glmg)$deviance, "df:",y1.glmg$df.residual)
+paste("Normal family with default link function:", summary(y1.glmn)$deviance, "df:",y1.glmn$df.residual)
+
+print("AIC by Model:")
+paste("Poisson family with default link function:", summary(y1.glmp)$aic)
+paste("Gamma family with default link function:", summary(y1.glmg)$aic)
+paste("Normal family with default link function (same as lm):", summary(y1.glmn)$aic)
+```
+
+The model based off of weekly data is better than the daily data.
+
+## GLM: All Traffic Models - City Park
+
+Let's look at City Park for the rest of the traffic models.
+
+*Model 2: Weighted Shortest Path*
+```{r, echo=FALSE}
+y <- weeklywsp$City.Park.Multi.Cyclists
+x <- weeklywsp$City.Park.Multi
+y.glm <- glm(y ~ x, family = Gamma(link = "inverse"))
+print("Model 2: Weighted Shortest Path")
+paste("Residual deviance for Gamma family with inverse link function:", summary(y.glm)$deviance, "df:",y.glm$df.residual)
+paste("AIC for Gamma family with inverse link function:", summary(y.glm)$aic)
+```
+
+*Model 3: Closeness Centrality*
+```{r, echo=FALSE}
+y <- weeklydcc$City.Park.Multi.Cyclists
+x <- weeklydcc$City.Park.Multi
+y.glm <- glm(y ~ x, family = Gamma(link = "inverse"))
+print("Model 3: Closeness Centrality")
+paste("Residual deviance for Gamma family with inverse link function:", summary(y.glm)$deviance, "df:",y.glm$df.residual)
+paste("AIC for Gamma family with inverse link function:", summary(y.glm)$aic)
+```
+
+*Model 4: Preferred Path*
+```{r, echo=FALSE}
+y <- weeklypp$City.Park.Multi.Cyclists
+x <- weeklypp$City.Park.Multi
+y.glm <- glm(y ~ x, family = Gamma(link = "inverse"))
+print("Model 4: Preferred Path")
+paste("Residual deviance for Gamma family with inverse link function:", summary(y.glm)$deviance, "df:",y.glm$df.residual)
+paste("AIC for Gamma family with inverse link function:", summary(y.glm)$aic)
+```
+
+*Model 5: Simplified Preferred Path*
+```{r, echo=FALSE}
+y <- weeklyspp$City.Park.Multi.Cyclists
+x <- weeklyspp$City.Park.Multi
+y.glm <- glm(y ~ x, family = Gamma(link = "inverse"))
+print("Model 5: Simplified Preferred Path")
+paste("Residual deviance for Gamma family with inverse link function:", summary(y.glm)$deviance, "df:",y.glm$df.residual)
+paste("AIC for Gamma family with log link function:", summary(y.glm)$aic)
+```
+
+*Model 6: Corner-Weighted*
+```{r, echo=FALSE}
+y <- weeklycor$City.Park.Multi.Cyclists
+x <- weeklycor$City.Park.Multi
+y.glm <- glm(y ~ x, family = Gamma(link = "inverse"))
+print("Model 6: Corner Weighted")
+paste("Residual deviance for Gamma family with inverse link function:", summary(y.glm)$deviance, "df:",y.glm$df.residual)
+paste("AIC for Gamma family with inverse link function:", summary(y.glm)$aic)
+```
+
+*Model 7: Unbiased*
+```{r, echo=FALSE}
+y <- weeklyub$City.Park.Multi.Cyclists
+x <- weeklyub$City.Park.Multi
+y.glm <- glm(y ~ x, family = Gamma(link = "inverse"))
+print("Model 7: Unbiased")
+paste("Residual deviance for Gamma family with inverse link function:", summary(y.glm)$deviance, "df:",y.glm$df.residual)
+paste("AIC for Gamma family with inverse link function:", summary(y.glm)$aic)
+```
+
+*Model 8: Corner-Weighted Length*
+```{r, echo=FALSE}
+y <- weeklycwlp$City.Park.Multi.Cyclists
+x <- weeklycwlp$City.Park.Multi
+y.glm <- glm(y ~ x, family = Gamma(link = "inverse"))
+print("Model 8: Corner Weighted Length")
+paste("Residual deviance for Gamma family with inverse link function:", summary(y.glm)$deviance, "df:",y.glm$df.residual)
+paste("AIC for Gamma family with inverse link function:", summary(y.glm)$aic)
+```
+
+From the above, the ranking of models is:
+1. Shortest Length
+2. Centrality
+3. Weighted Shortest Length
+
+It's the same result as for linear regression.
+
+# Finding the Relationship Between Bikeshare and Counter Data
+
+The relationship between bikeshare and counter data is different for each counter location. Even in the corner-weighted model, Ethel has too few trips to create a good model of the relationship between bikeshare and counter data. We combined the weekly aggregate for all the locations and ran a linear regression and generalized linear regression on Shortest Length. Linear regression was a slightly better model, so we ran linear regression on the combined counter data for all the path-finding models.
+
+Ranking of the path-finding models at this point was:
+1. Shortest Length
+2. Weighted Corner Length
+3. Weighted Corners
+
+We calculated the ADB from the equation resulting from the Shortest Length model, since it rated a top three path-finding model in all the evaluations. By pooling the data, though, we effectively flattened the variance between street segments on the map. 
+
+## Mixed Effects Model
+
+A mixed effects model is a generalized regression model that takes into account the effect of each counter location as it calculates the overall relationship between the counter and bikeshare data. The charts below show the different relationships between counter and bikeshare data at each counter location.
+
+```{r, echo=FALSE}
+par(mfrow=c(2,2))
+
+plot(dailysp$City.Park.Multi,dailysp$City.Park.Multi.Cyclists, xlab="Daily Bikeshare Counts", ylab="Daily Counter Counts", main="Bikeshare vs. Counter: City Park")
+abline(lrdailyspcp)
+
+plot(dailysp$Waterfront.Walkway,dailysp$Waterfront.Walkway.Cyclists, xlab="Daily Bikeshare Counts", ylab="Daily Counter Counts", main="Bikeshare vs. Counter: Waterfront")
+abline(lrdailyspw)
+
+plot(dailysp$Cawston_modified,dailysp$Cawston.St.corridor.Cyclists, xlab="Daily Bikeshare Counts", ylab="Daily Counter Counts", main="Bikeshare vs. Counter: Cawston")
+abline(lrdailyspc)
+
+plot(EthelDaily$Ethel.St..ATC,EthelDaily$Ethel.St.ATC.Cyclists, xlab="Daily Bikeshare Counts", ylab="Daily Counter Counts", main="Bikeshare vs. Counter: Ethel")
+abline(lrdailyspe)
+```
+
+Linear mixed effects model:
+```{r}
+library(lme4)
+
+dailysplme <- read.csv("~/UBC/Capstone/data-599-capstone-project-bike-share/SourceData/bikeshare_vs_city_counters_daily_sp_lme.csv", stringsAsFactors = TRUE)
+
+dailysp.lme <- lmer(Counts ~ Bikeshare + (Bikeshare|Counter_Name), data = dailysplme)
+summary(dailysp.lme)
+aiclme <- AIC(dailysp.lme)
+print(paste("AIC:", aiclme))
+```
+
+Since we have count data with many zeros and repeated values, we also used a negative binomial distribution to calculate the relationship.
+```{r}
+dailysp.nb <- glmer.nb(Counts ~ Bikeshare + (Bikeshare|Counter_Name), data = dailysplme)
+summary(dailysp.nb)
+aicnb <- AIC(dailysp.nb)
+print(paste("AIC:", aicnb))
+```
+
+The result is a lower AIC, so the negative binomial distribution is a better model.
+
+Graphing the relationship:
+
+```{r}
+plot(dailysplme$Bikeshare, dailysplme$Counts, xlab="Daily Bikeshare Counts", ylab="Daily Counter Counts", main="Relationship Between Counter and Bikeshare Data")
+curve(exp(summary(dailysp.nb)$coefficients[1,1]+summary(dailysp.nb)$coefficients[2,1]*x), add=T)
+```
+
+ADB was calculated with the equation from this model. The result was less "flat" than the linear regression of the pooled data.
+
